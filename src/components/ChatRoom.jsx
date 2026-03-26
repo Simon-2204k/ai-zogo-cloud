@@ -1,413 +1,354 @@
-function normalizeMessage(msg) {
-  const text =
-    (msg &&
-      (msg.message || msg.text || msg.message?.message || msg.text?.content)) ||
-    "";
-  const from =
-    msg.fromUserID || msg.senderUserID || (msg && msg.userID) || "unknown";
-  const id = msg.messageID || msg.msgID || `${from}-${Date.now()}`;
-  const timestamp = msg.timestamp || msg.serverTime || Date.now();
-  return { id, text, from, timestamp, raw: msg };
-}
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Send,
+  Video,
+  Phone,
+  Paperclip,
+  Smile,
+  Heart,
+  Sparkles,
+  User,
+  CheckCheck,
+  PhoneCall,
+  Image as ImageIcon,
+  X
+} from 'lucide-react';
 
-const testUsers = [
-  {
-    id: "A",
-    name: "Emma",
-    avatar:
-      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=100&h=100&fit=crop",
-  },
-  {
-    id: "B",
-    name: "James",
-    avatar:
-      "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=100&h=100&fit=crop",
-  },
-];
+export default function ChatRoom({
+  currentUser,
+  remoteUser,
+  onStartCall,
+  activeRoomId
+}) {
+  const [messages, setMessages] = useState([
+    {
+      id: 1,
+      senderId: remoteUser.id,
+      senderName: remoteUser.name,
+      senderAvatar: remoteUser.avatar,
+      text: `Hey ${currentUser.name}! Welcome to the ZEGO Cloud room #${activeRoomId}. Ready for an HD video call?`,
+      timestamp: '9:40 PM',
+      reactions: ['❤️', '🔥']
+    },
+    {
+      id: 2,
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderAvatar: currentUser.avatar,
+      text: `Hi ${remoteUser.name}! Yes, testing real-time WebRTC stream & ZIM instant chat!`,
+      timestamp: '9:41 PM',
+      reactions: ['👏']
+    }
+  ]);
 
+  const [inputMessage, setInputMessage] = useState('');
+  const [showEmojiPicker, setShowEmojiPicker] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+  const messagesEndRef = useRef(null);
+  const fileInputRef = useRef(null);
 
-  const [zimInstance, setZimInstance] = useState(null);
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [userInfo, setUserInfo] = useState(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [messageText, setMessageText] = useState("");
-  const [messages, setMessages] = useState([]);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  // Auto-scroll to bottom of chat
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
-  // Call state
-  const [callOpen, setCallOpen] = useState(false);
-  const [callType, setCallType] = useState("video");
-  const [isCaller, setIsCaller] = useState(false);
+  const handleSendMessage = (e) => {
+    e.preventDefault();
+    if (!inputMessage.trim() && !selectedImage) return;
 
-  // Incoming call state
-  const [incomingCall, setIncomingCall] = useState(null); // { from, callType, callerInfo }
-  const [callRoomId, setCallRoomId] = useState(null);
+    const newMsg = {
+      id: Date.now(),
+      senderId: currentUser.id,
+      senderName: currentUser.name,
+      senderAvatar: currentUser.avatar,
+      text: inputMessage.trim(),
+      image: selectedImage,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+      reactions: []
+    };
 
-  const messageEndRef = useRef(null);
+    setMessages((prev) => [...prev, newMsg]);
+    setInputMessage('');
+    setSelectedImage(null);
 
- <div className="flex-1 flex overflow-hidden">
-          {/* Sidebar Overlay - Mobile */}
-          {sidebarOpen && (
-            <div
-              className="fixed inset-0 bg-black/30 backdrop-blur-sm z-40 md:hidden"
-              onClick={() => setSidebarOpen(false)}
-            />
-          )}
+    // Auto-reply simulation from remote user
+    setTimeout(() => {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now() + 1,
+          senderId: remoteUser.id,
+          senderName: remoteUser.name,
+          senderAvatar: remoteUser.avatar,
+          text: `Got your message! Let's jump on a video call whenever you're ready 🚀`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          reactions: ['👍']
+        }
+      ]);
+    }, 1500);
+  };
 
-          {/* Sidebar */}
-          <aside
-            className={`
-            fixed md:relative inset-y-0 left-0 z-50 
-            w-80 max-w-[85vw] md:w-80 
-            transform transition-transform duration-300 ease-out
-            ${sidebarOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
-            flex flex-col
-            bg-linear-to-b from-[#121216] to-[#0a0a0a]
-            border-r border-white/5
-          `}
-          >
-            {/* Sidebar Header */}
-            <div className="p-5 border-b border-white/5">
-              <div className="flex items-center justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="relative w-10 h-10 rounded-xl bg-linear-to-r from-rose-500 to-amber-500 flex items-center justify-center">
-                    <Heart className="w-5 h-5 text-white fill-white" />
-                  </div>
-                  <Link
-                    to="/"
-                    className="font-serif italic font-bold bg-linear-to-r from-rose-300 via-amber-300 to-rose-300 bg-clip-text text-transparent"
-                  >
-                    MyType
-                  </Link>
-                </div>
+  const handleAddReaction = (msgId, emoji) => {
+    setMessages((prev) =>
+      prev.map((msg) => {
+        if (msg.id === msgId) {
+          const reactions = msg.reactions.includes(emoji)
+            ? msg.reactions.filter((r) => r !== emoji)
+            : [...msg.reactions, emoji];
+          return { ...msg, reactions };
+        }
+        return msg;
+      })
+    );
+  };
+
+  const handleImageSelect = (e) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const url = URL.createObjectURL(file);
+      setSelectedImage(url);
+    }
+  };
+
+  return (
+    <div className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="glass rounded-3xl border border-white/15 overflow-hidden shadow-2xl flex flex-col md:flex-row h-[750px]">
+        
+        {/* Left Sidebar - Peer Profile & Room Details */}
+        <aside className="w-full md:w-80 bg-black/40 border-r border-white/10 p-6 flex flex-col justify-between">
+          <div>
+            <div className="flex items-center gap-2 mb-6">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-xs font-bold uppercase tracking-wider text-zinc-400">
+                Connected Peer
+              </span>
+            </div>
+
+            {/* Peer Card */}
+            <div className="p-5 rounded-2xl bg-white/5 border border-white/10 text-center mb-6 relative overflow-hidden group">
+              <div className="absolute top-0 right-0 p-3">
+                <Sparkles className="w-4 h-4 text-pink-400" />
+              </div>
+              <img
+                src={remoteUser.avatar}
+                alt={remoteUser.name}
+                className="w-24 h-24 rounded-full object-cover mx-auto mb-4 border-2 border-violet-400 shadow-xl group-hover:scale-105 transition-transform"
+              />
+              <h3 className="text-xl font-extrabold text-white mb-1">{remoteUser.name}</h3>
+              <p className="text-xs text-violet-300 font-medium mb-4">Online • ZEGO ZIM Connected</p>
+              
+              <div className="flex justify-center gap-2">
                 <button
-                  onClick={() => setSidebarOpen(false)}
-                  className="md:hidden p-2 text-zinc-400 hover:text-zinc-200 rounded-full hover:bg-white/5"
+                  onClick={() => onStartCall('video')}
+                  className="btn btn-primary px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-md"
                 >
-                  <X className="w-5 h-5" />
+                  <Video className="w-3.5 h-3.5" />
+                  <span>Call Video</span>
+                </button>
+                <button
+                  onClick={() => onStartCall('voice')}
+                  className="px-3 py-2 rounded-xl bg-white/10 hover:bg-white/15 border border-white/15 text-xs font-bold text-white transition-all flex items-center gap-1.5"
+                >
+                  <Phone className="w-3.5 h-3.5 text-pink-400" />
+                  <span>Voice</span>
                 </button>
               </div>
-              <p className="text-sm text-zinc-400">
-                Connect with your match 💕
-              </p>
             </div>
 
-            {/* User Selection */}
-            <div className="p-5">
-              <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">
-                Select Profile
-              </p>
-              <div className="space-y-2">
-                {testUsers.map((u) => (
-                  <button
-                    key={u.id}
-                    onClick={() => handleSelectUser(u.id)}
-                    className={`group relative w-full rounded-2xl overflow-hidden transition-all duration-200 ${
-                      selectedUser === u.id
-                        ? "shadow-lg shadow-rose-500/25"
-                        : ""
-                    }`}
-                  >
-                    {/* linear border for selected */}
-                    {selectedUser === u.id ? (
-                      <>
-                        <div className="absolute inset-0 bg-linear-to-r from-rose-500 via-amber-500 to-violet-500"></div>
-                        <div className="relative flex items-center gap-3 p-3 bg-linear-to-r from-rose-500 to-amber-500 text-white">
-                          <img
-                            src={u.avatar}
-                            alt={u.name}
-                            className="w-12 h-12 rounded-full object-cover ring-2 ring-white/20"
-                          />
-                          <div className="text-left">
-                            <p className="font-semibold">{u.name}</p>
-                            <p className="text-xs text-white/80">
-                              {u.id === "A"
-                                ? "Looking for love"
-                                : "Ready to mingle"}
-                            </p>
-                          </div>
-                          <Sparkles className="w-5 h-5 ml-auto" />
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        {/* linear border for unselected */}
-                        <div className="absolute inset-0 bg-linear-to-r from-rose-500 via-amber-500 to-violet-500 opacity-60 group-hover:opacity-100 transition-all duration-300"></div>
-                        <div className="relative flex items-center gap-3 p-3 m-px bg-[#0a0a0a] rounded-2xl">
-                          <img
-                            src={u.avatar}
-                            alt={u.name}
-                            className="w-12 h-12 rounded-full object-cover ring-2 ring-white/20"
-                          />
-                          <div className="text-left">
-                            <p className="font-semibold text-white">{u.name}</p>
-                            <p className="text-xs bg-linear-to-r from-rose-300 via-amber-300 to-violet-300 bg-clip-text text-transparent">
-                              {u.id === "A"
-                                ? "Looking for love"
-                                : "Ready to mingle"}
-                            </p>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </button>
-                ))}
+            {/* Room Information */}
+            <div className="space-y-3 text-xs text-zinc-400">
+              <div className="p-3 rounded-xl bg-white/5 border border-white/10 flex justify-between items-center">
+                <span>Room ID</span>
+                <span className="font-mono font-bold text-violet-300">{activeRoomId}</span>
+              </div>
+              <div className="p-3 rounded-xl bg-white/5 border border-white/10 flex justify-between items-center">
+                <span>SDK Mode</span>
+                <span className="font-semibold text-emerald-400">WebRTC + ZIM</span>
+              </div>
+              <div className="p-3 rounded-xl bg-white/5 border border-white/10 flex justify-between items-center">
+                <span>Current User</span>
+                <span className="font-semibold text-white">{currentUser.name}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 pt-4 border-t border-white/10 text-[11px] text-zinc-500 text-center">
+            ZEGO Cloud Real-Time Instant Messaging Engine
+          </div>
+        </aside>
+
+        {/* Right Main Chat Area */}
+        <main className="flex-1 flex flex-col bg-gradient-to-b from-[#121216]/80 via-[#0c0c0e]/80 to-black/80">
+          
+          {/* Chat Header */}
+          <header className="p-4 sm:p-6 border-b border-white/10 flex items-center justify-between backdrop-blur-md">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                <img
+                  src={remoteUser.avatar}
+                  alt={remoteUser.name}
+                  className="w-10 h-10 rounded-full object-cover border border-white/20"
+                />
+                <span className="absolute bottom-0 right-0 w-3 h-3 bg-emerald-400 border-2 border-black rounded-full" />
+              </div>
+              <div>
+                <h4 className="font-bold text-white text-base">{remoteUser.name}</h4>
+                <p className="text-xs text-zinc-400">Active now in room #{activeRoomId}</p>
               </div>
             </div>
 
-            {/* Login/Logout */}
-            <div className="px-5 pb-5">
-              {!isLoggedIn ? (
-                <button
-                  onClick={handleLogin}
-                  disabled={!selectedUser || isConnecting}
-                  className="group relative w-full rounded-xl overflow-hidden disabled:opacity-50 disabled:cursor-not-allowed"
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => onStartCall('video')}
+                className="p-2.5 rounded-xl bg-violet-600/30 hover:bg-violet-600/50 border border-violet-500/40 text-violet-200 transition-all"
+                title="Start Video Call"
+              >
+                <Video className="w-5 h-5" />
+              </button>
+              <button
+                onClick={() => onStartCall('voice')}
+                className="p-2.5 rounded-xl bg-pink-600/30 hover:bg-pink-600/50 border border-pink-500/40 text-pink-200 transition-all"
+                title="Start Voice Call"
+              >
+                <Phone className="w-5 h-5" />
+              </button>
+            </div>
+          </header>
+
+          {/* Messages Scroll Feed */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+            {messages.map((msg) => {
+              const isMe = msg.senderId === currentUser.id;
+              return (
+                <div
+                  key={msg.id}
+                  className={`flex items-end gap-3 ${isMe ? 'flex-row-reverse' : 'flex-row'}`}
                 >
-                  <div className="absolute inset-0 bg-linear-to-r from-rose-500 via-amber-500 to-violet-500 opacity-80 group-hover:opacity-100 transition-all duration-500"></div>
-                  <div className="absolute inset-px bg-[#0a0a0a] rounded-xl"></div>
-                  <div className="relative flex items-center justify-center gap-2 py-3 font-semibold bg-linear-to-r from-rose-300 via-amber-300 to-violet-300 bg-clip-text text-transparent">
-                    {isConnecting ? (
-                      <span className="flex items-center gap-2">
-                        <span className="w-4 h-4 border-2 border-rose-300/30 border-t-rose-300 rounded-full animate-spin" />
-                        Connecting...
-                      </span>
-                    ) : (
-                      <>
-                        <MessageCircle className="w-5 h-5 text-rose-400" />
-                        <span>Start Chat</span>
-                      </>
-                    )}
-                  </div>
-                </button>
-              ) : (
-                <div className="bg-linear-to-r from-rose-500/10 to-amber-500/10 rounded-2xl p-4 border border-white/10">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="relative">
-                        <img
-                          src={
-                            testUsers.find((u) => u.id === selectedUser)?.avatar
-                          }
-                          alt=""
-                          className="w-10 h-10 rounded-full object-cover"
-                        />
-                        <div className="online-indicator absolute -bottom-0.5 -right-0.5" />
-                      </div>
-                      <div>
-                        <p className="font-semibold text-white">
-                          {userInfo?.userName}
-                        </p>
-                        <p className="text-xs text-emerald-400 font-medium">
-                          Online
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={handleLogout}
-                      className="p-2 text-zinc-400 hover:text-rose-400 hover:bg-white/5 rounded-xl transition-colors"
-                      title="Logout"
-                    >
-                      <LogOut className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Match Info */}
-            {isLoggedIn && (
-              <div className="px-5 mt-auto pb-5">
-                <p className="text-xs font-medium text-zinc-500 uppercase tracking-wider mb-3">
-                  Chatting with
-                </p>
-                <div className="flex items-center gap-3 p-3 bg-white/5 rounded-2xl border border-white/10">
-                  <div className="relative">
-                    <img
-                      src={partnerUser.avatar}
-                      alt={partnerUser.name}
-                      className="w-12 h-12 rounded-full object-cover"
-                    />
-                    <div className="online-indicator absolute -bottom-0.5 -right-0.5" />
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="font-semibold text-white">
-                      {partnerUser.name}
-                    </p>
-                    <p className="text-xs text-zinc-400">Your match 💕</p>
-                  </div>
-                </div>
-
-                {/* Quick call buttons */}
-                <div className="flex gap-2 mt-3">
-                  <button
-                    onClick={startVoiceCall}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-amber-500/20 text-amber-300 rounded-xl font-medium hover:bg-amber-500/30 transition-colors"
-                  >
-                    <Phone className="w-4 h-4" />
-                    <span className="text-sm">Voice</span>
-                  </button>
-                  <button
-                    onClick={startVideoCall}
-                    className="flex-1 flex items-center justify-center gap-2 py-2.5 bg-rose-500/20 text-rose-300 rounded-xl font-medium hover:bg-rose-500/30 transition-colors"
-                  >
-                    <Video className="w-4 h-4" />
-                    <span className="text-sm">Video</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </aside>
-
-          {/* Main Chat Area */}
-          <main className="flex-1 flex flex-col min-w-0 bg-linear-to-br from-[#0a0a0a] to-[#121216]">
-            {/* Chat Header - Desktop */}
-            <div className="hidden md:flex items-center justify-between px-6 py-4 glass bg-[#121216]/50 backdrop-blur-xl border-b border-white/5">
-              <div className="flex items-center gap-4">
-                {isLoggedIn && (
-                  <div className="relative">
-                    <img
-                      src={partnerUser.avatar}
-                      alt={partnerUser.name}
-                      className="w-11 h-11 rounded-full object-cover"
-                    />
-                    <div className="online-indicator absolute -bottom-0.5 -right-0.5" />
-                  </div>
-                )}
-                <div>
-                  <h2 className="font-semibold text-white">
-                    {isLoggedIn
-                      ? partnerUser.name
-                      : "Select a profile to start"}
-                  </h2>
-                  <p className="text-xs text-zinc-400">
-                    {isLoggedIn
-                      ? "Online • Matched with you"
-                      : "Your conversations appear here"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Desktop call buttons */}
-              {isLoggedIn && (
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={startVoiceCall}
-                    className="p-3 text-amber-400 rounded-full hover:bg-white/5 transition-colors"
-                    title="Voice call"
-                  >
-                    <Phone className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={startVideoCall}
-                    className="p-3 text-rose-400 rounded-full hover:bg-white/5 transition-colors"
-                    title="Video call"
-                  >
-                    <Video className="w-5 h-5" />
-                  </button>
-                  <div className="ml-2 flex items-center gap-2 px-3 py-1.5 bg-emerald-500/10 rounded-full">
-                    <span className="w-2 h-2 bg-emerald-400 rounded-full animate-pulse" />
-                    <span className="text-xs font-medium text-emerald-400">
-                      Connected
-                    </span>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Messages Area */}
-            <div className="flex-1 overflow-y-auto p-4 md:p-6">
-              <div className="max-w-2xl mx-auto space-y-3">
-                {messages.length === 0 && (
-                  <div className="flex flex-col items-center justify-center py-16 text-center animate-fade-in">
-                    <h3 className="font-semibold text-lg text-white mb-2">
-                      No messages yet
-                    </h3>
-                    <p className="text-zinc-400 text-sm max-w-xs">
-                      {isLoggedIn
-                        ? `Say hello to ${partnerUser.name}! 👋`
-                        : "Select a profile and start chatting"}
-                    </p>
-                  </div>
-                )}
-
-                {messages.map((m) => {
-                  const fromMe = userInfo && m.from === userInfo.userID;
-                  const isSystem = m.from === "system";
-
-                  if (isSystem) {
-                    return (
-                      <div key={m.id} className="flex justify-center my-4">
-                        <div className="message-system">{m.text}</div>
-                      </div>
-                    );
-                  }
-
-                  return (
+                  <img
+                    src={msg.senderAvatar}
+                    alt={msg.senderName}
+                    className="w-8 h-8 rounded-full object-cover border border-white/15"
+                  />
+                  <div className={`max-w-[75%] space-y-1 ${isMe ? 'items-end' : 'items-start'}`}>
                     <div
-                      key={m.id}
-                      className={`flex ${fromMe ? "justify-end" : "justify-start"}`}
+                      className={`p-4 rounded-2xl text-sm leading-relaxed ${
+                        isMe
+                          ? 'bg-gradient-to-r from-violet-600 to-pink-600 text-white rounded-br-none shadow-lg'
+                          : 'bg-white/10 border border-white/15 text-zinc-100 rounded-bl-none backdrop-blur-md'
+                      }`}
                     >
-                      {!fromMe && (
+                      {msg.image && (
                         <img
-                          src={partnerUser.avatar}
-                          alt=""
-                          className="w-8 h-8 rounded-full object-cover mr-2 mt-auto shrink-0"
+                          src={msg.image}
+                          alt="Attachment"
+                          className="w-full max-h-60 object-cover rounded-xl mb-2 border border-white/20"
                         />
                       )}
-                      <div
-                        className={`message-bubble ${fromMe ? "message-sent" : "message-received"}`}
-                      >
-                        <p className="text-sm leading-relaxed wrap-break-words whitespace-pre-wrap">
-                          {m.text}
-                        </p>
-                        <p
-                          className={`text-[10px] mt-1.5 text-right ${fromMe ? "text-white/60" : "text-surface-400"}`}
-                        >
-                          {formatTime(m.timestamp)}
-                        </p>
-                      </div>
+                      <p>{msg.text}</p>
+
+                      {/* Emoji Reactions Bar */}
+                      {msg.reactions.length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-2">
+                          {msg.reactions.map((emoji, i) => (
+                            <span
+                              key={i}
+                              className="px-2 py-0.5 rounded-full bg-black/40 text-xs border border-white/10"
+                            >
+                              {emoji}
+                            </span>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  );
-                })}
-                <div ref={messageEndRef} />
+
+                    <div className="flex items-center gap-2 px-1 text-[10px] text-zinc-400">
+                      <span>{msg.timestamp}</span>
+                      {isMe && <CheckCheck className="w-3.5 h-3.5 text-emerald-400" />}
+
+                      {/* Quick Reaction Emojis trigger */}
+                      <button
+                        onClick={() => handleAddReaction(msg.id, '❤️')}
+                        className="hover:scale-125 transition-transform opacity-60 hover:opacity-100"
+                      >
+                        ❤️
+                      </button>
+                      <button
+                        onClick={() => handleAddReaction(msg.id, '🔥')}
+                        className="hover:scale-125 transition-transform opacity-60 hover:opacity-100"
+                      >
+                        🔥
+                      </button>
+                      <button
+                        onClick={() => handleAddReaction(msg.id, '👏')}
+                        className="hover:scale-125 transition-transform opacity-60 hover:opacity-100"
+                      >
+                        👏
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            <div ref={messagesEndRef} />
+          </div>
+
+          {/* Image Upload Preview */}
+          {selectedImage && (
+            <div className="px-6 py-2 bg-black/60 border-t border-white/10 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ImageIcon className="w-4 h-4 text-violet-400" />
+                <span className="text-xs text-zinc-300">Image attached</span>
               </div>
+              <button
+                onClick={() => setSelectedImage(null)}
+                className="text-xs text-rose-400 hover:underline"
+              >
+                Remove
+              </button>
+            </div>
+          )}
+
+          {/* Message Input Bar */}
+          <form onSubmit={handleSendMessage} className="p-4 border-t border-white/10 bg-black/40 flex items-center gap-3">
+            <input
+              type="file"
+              ref={fileInputRef}
+              onChange={handleImageSelect}
+              accept="image/*"
+              className="hidden"
+            />
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="p-3 rounded-2xl bg-white/5 hover:bg-white/10 border border-white/10 text-zinc-400 hover:text-white transition-all"
+              title="Attach File"
+            >
+              <Paperclip className="w-5 h-5" />
+            </button>
+
+            <div className="relative flex-1">
+              <input
+                type="text"
+                value={inputMessage}
+                onChange={(e) => setInputMessage(e.target.value)}
+                placeholder={`Type message as ${currentUser.name}...`}
+                className="w-full px-5 py-3.5 bg-white/5 border border-white/15 rounded-2xl text-white placeholder-zinc-500 focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-400/20 text-sm"
+              />
             </div>
 
-            {/* Message Input */}
-            <div className="p-4 md:p-6 glass bg-[#121216]/50 backdrop-blur-xl border-t border-white/5">
-              <div className="max-w-2xl mx-auto">
-                <div className="flex items-end gap-3">
-                  <div className="flex-1 relative">
-                    <textarea
-                      value={messageText}
-                      onChange={(e) => setMessageText(e.target.value)}
-                      onKeyDown={onKeyDown}
-                      placeholder={
-                        isLoggedIn
-                          ? "Type your message..."
-                          : "Login to send messages"
-                      }
-                      disabled={!isLoggedIn}
-                      rows={1}
-                      className="w-full px-4 py-3 bg-white/5 border border-white/10 rounded-xl text-white placeholder-zinc-500 resize-none min-h-13 max-h-32 focus:border-rose-400/50 focus:ring-2 focus:ring-rose-400/20 transition-all disabled:opacity-50"
-                      style={{ paddingTop: "14px", paddingBottom: "14px" }}
-                    />
-                  </div>
-                  <button
-                    onClick={handleSendMessage}
-                    disabled={!isLoggedIn || !messageText.trim()}
-                    className="btn btn-primary btn-icon w-13 h-13 shrink-0"
-                    aria-label="Send message"
-                  >
-                    <Send className="w-5 h-5" />
-                  </button>
-                </div>
-                <p className="text-xs text-zinc-500 mt-2 text-center md:text-left">
-                  Press Enter to send • Shift+Enter for new line
-                </p>
-              </div>
-            </div>
-          </main>
-        </div>
+            <button
+              type="submit"
+              disabled={!inputMessage.trim() && !selectedImage}
+              className="btn btn-primary px-6 py-3.5 rounded-2xl font-bold flex items-center gap-2 text-sm shadow-xl disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <span>Send</span>
+              <Send className="w-4 h-4" />
+            </button>
+          </form>
+
+        </main>
+
       </div>
+    </div>
+  );
+}
